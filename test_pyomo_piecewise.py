@@ -1,5 +1,8 @@
+import copy
 import os
 import time
+import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import openpyxl
 from pyomo.environ import *
@@ -29,6 +32,7 @@ class OptimizationRoutes:
         self.full_distribution = None
         self.distribution_summary = None
         self.answer_separated = None
+        self.ts = None
         self.file_path = file_path
 
     def read_data(self):
@@ -185,8 +189,8 @@ class OptimizationRoutes:
     def solve_problem(self):
         print('Модель создана, начинается оптимизация')
         # with SolverFactory("ipopt") as opt:
-        #    opt.options.option_file_name = "ipopt.opt"
-        #    with open("ipopt.opt", "w") as f:
+        #    opt.options.option_file_name = "\\support_files\\ipopt.opt"
+        #    with open("\\support_files\\ipopt.opt", "w") as f:
         #        f.write("mumps_mem_percent 500\n")
         #    opt.solve(self.model, tee=True)
         # SolverFactory("glpk").solve(self.model, tee=True)
@@ -199,7 +203,6 @@ class OptimizationRoutes:
         sum_base = []
         count = 0
         for v in self.model.component_data_objects(Var):
-            # print(str(v), v.value,)
             try:
                 if v.value <= 0.001:
                     answer.append(0.0)
@@ -349,23 +352,76 @@ class OptimizationRoutes:
         obj_val = pd.DataFrame(obj_val, columns=['Стоимость перевозки'])
         self.answer_separated = self.answer_separated.join(obj_val)
         self.answer_separated = self.answer_separated.set_index(pd.Index(np.array(self.azs_fuel_name)))
-        print('Суммарная цена перевозок: ', obj_val)
-        print('Распределение груза по нефтебазам: ', sum_base[:len(sum_base) - 1])
-        print('Суммарный вес: ', sum(sum_base[:len(sum_base) - 1]))
+        print('Суммарная цена перевозок: ', round(*obj_val.loc[0, ['Стоимость перевозки']].values.tolist(), 3))
+        print('Распределение груза по нефтебазам: ', [round(i, 3) for i in sum_base[:len(sum_base) - 1]])
+        print('Суммарный вес: ', round(sum(sum_base[:len(sum_base) - 1]), 3))
         return self.answer_separated, self.distribution_summary, self.full_distribution,
 
     def save_answer(self):
+        self.ts = datetime.now().strftime('%y.%m.%d_%H-%M')
+        if not os.path.isdir(f'project_{str(self.ts)}'):
+            os.makedirs(f'project_{str(self.ts)}')
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Объемы доставки'
-        ts = datetime.now().strftime('%y.%m.%d_%H-%M')
-        wb.save(filename=f'output_optimize_{str(ts)}.xlsx')
-        with pd.ExcelWriter(f'output_optimize_{str(ts)}.xlsx', engine='openpyxl', mode='a',
+        wb.save(filename=f'project_{str(self.ts)}\\output_optimize_{str(self.ts)}.xlsx')
+        with pd.ExcelWriter(f'project_{str(self.ts)}\\output_optimize_{str(self.ts)}.xlsx', engine='openpyxl', mode='a',
                             if_sheet_exists="replace") as writer:
             self.answer_separated.to_excel(writer, sheet_name="Объемы доставки")
             self.full_distribution.to_excel(writer, sheet_name="Подробно")
             self.distribution_summary.to_excel(writer, sheet_name="Затраты суммарно")
-        print('Файлы сформированы и сохранены, программа завершает свою работу')
+        self.base_name.pop(-1)
+        print('Файлы сформированы и сохранены')
+
+    def routes_map(self):
+        print("Начинается формирование карт маршрутов")
+        municipal = gpd.read_file(os.curdir + '\\support_files\\admin_level_6.geojson')
+        administrative = gpd.read_file(os.curdir + '\\support_files\\admin_level_4.geojson')
+        info_base = pd.read_excel(self.file_path, sheet_name='спр').set_index('НБ_подробно')
+        cities = pd.read_csv(os.curdir + "\\support_files\\cities.csv")
+        for base4 in self.base_name:
+            latitude_azs = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
+                by=['Название АЗС']).first().loc[:, ['Широта']].values.tolist()
+            latitude_azs = [item for sublist in latitude_azs for item in sublist]
+            longitude_azs = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
+                by=['Название АЗС']).first().loc[:, ['Долгота']].values.tolist()
+            longitude_azs = [item for sublist in longitude_azs for item in sublist]
+            latitude_base = info_base.loc[base4, ["Широта"]].values.tolist() * len(latitude_azs)
+            longitude_base = info_base.loc[base4, ["Долгота"]].values.tolist() * len(longitude_azs)
+            base_azs = zip(latitude_base, latitude_azs, longitude_base, longitude_azs)
+            coord_base = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
+                by=['Название АЗС']).first().loc[:, ['Долгота', 'Широта']]
+            geocoord_base = gpd.GeoDataFrame(
+                coord_base, geometry=gpd.points_from_xy(longitude_azs, latitude_azs), crs="EPSG:4326")
+            poly_mun = gpd.sjoin(municipal, geocoord_base, op='contains')
+            poly_mun = poly_mun.drop_duplicates(subset='name', keep='last')
+            poly_adm = gpd.sjoin(administrative, geocoord_base, op='contains')
+            poly_adm = poly_adm.drop_duplicates(subset='name', keep='last')
+            poly_adm = administrative.loc[poly_adm['name'].index]
+            cities_map = copy.copy(cities)
+            cities_map['Население'] = cities['Население'].astype(int)
+            cities_map = cities_map.loc[(cities['Население'] >= 100000)].loc[:, ["Город", "Долгота", "Широта"]].rename(
+                columns={"Город": "name", "Долгота": "longitude", "Широта": "latitude"})
+            cities_map = gpd.GeoDataFrame(
+                cities_map, geometry=gpd.points_from_xy(cities_map.longitude, cities_map.latitude), crs="EPSG:4326")
+            cities_map = gpd.sjoin(cities_map, poly_adm, op='within')
+
+            f, ax = plt.subplots()
+            poly_adm.plot(ax=ax, color="lightgrey", linewidth=1)
+            poly_mun.plot(ax=ax, edgecolor='grey', color="lightpink", linewidth=0.3)
+            poly_adm.plot(ax=ax, edgecolor='dimgrey', facecolor='none', linewidth=1)
+            cities_map.plot(ax=ax, edgecolor='forestgreen', color='limegreen', alpha=0, )
+            for x, y, label in zip(cities_map.geometry.x, cities_map.geometry.y, cities_map.name_left):
+                ax.annotate(label, xy=(x, y), xytext=(2, 4), textcoords="offset points", fontsize=4, weight='bold')
+            for slat, dlat, slon, dlon in base_azs:
+                plt.plot([slon, dlon], [slat, dlat], linewidth=0.5, color="royalblue", alpha=0.5)
+                plt.scatter([slon, dlon], [slat, dlat], linewidths=0.1, s=3, color="red", alpha=0.8)
+            max_x, max_y, min_x, min_y = max(longitude_azs), max(latitude_azs), min(longitude_azs), min(latitude_azs)
+            ax.set_xlim(min_x - 4, max_x + 4)
+            ax.set_ylim(min_y - 2, max_y + 2)
+            plt.title(f"Маршруты от {base4}")
+            plt.savefig(f"project_{str(self.ts)}\\Маршруты_от_базы_{base4}.png", dpi=1000)
+            print(f'Сформирована карта маршрутов от {base4}')
 
 
 if __name__ == '__main__':
@@ -376,4 +432,5 @@ if __name__ == '__main__':
     prob.solve_problem()
     prob.create_answer()
     prob.save_answer()
-    print('Время, за которое была решена задача: ', (time.time() - start_time))
+    prob.routes_map()
+    print('Время, за которое была решена задача: ', round((time.time() - start_time)))

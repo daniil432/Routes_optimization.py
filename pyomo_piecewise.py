@@ -84,14 +84,14 @@ class OptimizationRoutes:
         # Матрица размерностью кол-ва АЗС X кол-во нефтебаз
         self.km = pd.read_excel(self.file_path, sheet_name='Км').drop(zero_val, axis=1).set_index(['ID'])
         # Инфо об АЗС/МОК
-        self.azs_info = pd.read_excel(self.file_path, sheet_name='спрАЗС').set_index(['ID']).loc[self.azs_name]
+        self.azs_info = pd.read_excel(self.file_path, sheet_name='спрОбъект').set_index(['ID']).loc[self.azs_name]
         # Инфо о каналах
-        self.channel = pd.read_excel(self.file_path, sheet_name='спр').loc[
+        self.channel = pd.read_excel(self.file_path, sheet_name='спрОбъект').loc[
                        0:3, ["Канал", "Канал крупно", "Канал3"]].set_index("Канал")
         # Инфо о базах
         self.base_info = pd.read_excel(
-            self.file_path, sheet_name='спр').loc[0:, ["НБ_подробно", "НБ", "Тип НБ"]].set_index(
-            ['НБ_подробно']).loc[self.base_name].values.tolist()
+            self.file_path, sheet_name='спрБаза').loc[0:, ["База_подробно", "База", "Тип Базы"]].set_index(
+            ['База_подробно']).loc[self.base_name].values.tolist()
         print('Файл прочитан, формируем модель для оптимизации и создаём переменные')
 
     def create_model(self):
@@ -391,9 +391,9 @@ class OptimizationRoutes:
 
         # Полученный полный ответ конвертируем в DataFrame.
         self.full_distribution = pd.DataFrame(self.full_distribution,
-                                              columns=["Название АЗС", "Тип топлива", "НБ_подробно", "Имя базы",
-                                                       "Тип НБ", "Канал", "АЗС/объект", "Широта", "Долгота", "Кластер",
-                                                       "Регион", "Номер АЗС/объекта", "Макрорегион КПРА",
+                                              columns=["Название Объекта", "Тип топлива", "База_подробно", "Имя базы",
+                                                       "Тип Базы", "Канал", "Объект", "Широта", "Долгота", "Кластер",
+                                                       "Регион", "Номер объекта", "Макрорегион КПРА",
                                                        "Канал крупно", "Канал3", "Объём поставки", "Км", "исх capex",
                                                        "исх OPEX fix", "исх OPEX var", "исх ПЛ", "исх ВЛ", "capex итог",
                                                        "capex", "OPEX fix", "OPEX var", "ПЛ", "ВЛ", "Итого затраты"])
@@ -415,12 +415,12 @@ class OptimizationRoutes:
                                                   *self.base_info[base3]])
         # Полученный полный ответ конвертируем в DataFrame.
         self.distribution_summary = pd.DataFrame(self.distribution_summary,
-                                                 columns=["Базис", "Объем перевалки", "Бензин 92",
-                                                          "Бензин 95", "Бензин G-95", "Бензин 98",
-                                                          "ДТ летнее", "ДТ зимнее", "capex", "capex в год",
+                                                 columns=["Базис", "Объем перевалки", "Товар_1",
+                                                          "Товар_2", "Товар_3", "Товар_4",
+                                                          "Товар_5", "Товар_6", "capex", "capex в год",
                                                           "OPEX_fix", "OPEX_var", "ЖД тариф", "Транспорт", "Суммарно",
                                                           "исхСАРЕХ", "исхОРЕХ_фикс", "исхОРЕХ_пер",
-                                                          "НБ", "Тип НБ"])
+                                                          "База", "Тип Базы"])
 
         # Теперь формируем матрицу всех маршрутов от НБ до АЗС-топливо в виде DataFrame,
         # добавив к матрице столбец с типами топлива.
@@ -489,7 +489,7 @@ class OptimizationRoutes:
         # Извлекаем из excel-файла информацию о базах.
         info_base = pd.read_excel(
             self.file_path, sheet_name='спр').loc[
-                    0:, ["НБ_подробно", "НБ", "Тип НБ", "Долгота", "Широта"]].set_index('НБ_подробно')
+                    0:, ["База_подробно", "База", "Тип Базы", "Долгота", "Широта"]].set_index('База_подробно')
 
         # Создаём полотно, на котором будут изображаться все НБ и АЗС, участвующие в задаче.
         fig, axs = plt.subplots(dpi=1000)
@@ -498,15 +498,15 @@ class OptimizationRoutes:
         duplicates = {}
         # Убираем дубликаты баз, т.е. при наличии ЯНОС_АИ92 и ЯНОС_G-95 останется только ЯНОС, маршруты объединяются.
         for base6 in range(len(self.base_name)):
-            if info_base.loc[self.base_name[base6], ['НБ']].item() in duplicates:
+            if info_base.loc[self.base_name[base6], ['База']].item() in duplicates:
                 pass
             else:
                 temp = []
                 for base7 in range(len(self.base_name)):
-                    if info_base.loc[self.base_name[base6], ['НБ']].item() == \
-                            info_base.loc[self.base_name[base7], ['НБ']].item():
+                    if info_base.loc[self.base_name[base6], ['База']].item() == \
+                            info_base.loc[self.base_name[base7], ['База']].item():
                         temp.append(base7)
-                duplicates[info_base.loc[self.base_name[base6], ['НБ']].item()] = temp
+                duplicates[info_base.loc[self.base_name[base6], ['База']].item()] = temp
         # Цвета, которыми будут обозначаться точки интереса у разных НБ. Для изменения нужно найти палитру matplotlib и
         # заменить или добавить интересующие цвета.
         colors = ['brown', 'red', 'blue', 'orange', 'green', 'darkblue', 'olive', 'goldenrod', 'rosybrown', 'indigo',
@@ -519,20 +519,20 @@ class OptimizationRoutes:
         longitude_base_global = []
         # Считываем из файлов координаты АЗС и НБ, соответствующих друг другу.
         for base4 in self.base_name:
-            latitude_azs = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
-                by=['Название АЗС']).first()['Широта'].tolist()
-            longitude_azs = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
-                by=['Название АЗС']).first()['Долгота'].tolist()
-            loading_azs = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
-                by=['Название АЗС']).first()['Объём поставки'].tolist()
-            km_azs = self.full_distribution.set_index('НБ_подробно').loc[base4].groupby(
-                by=['Название АЗС']).first()['Км'].tolist()
+            latitude_azs = self.full_distribution.set_index('База_подробно').loc[base4].groupby(
+                by=['Название Объекта']).first()['Широта'].tolist()
+            longitude_azs = self.full_distribution.set_index('База_подробно').loc[base4].groupby(
+                by=['Название Объекта']).first()['Долгота'].tolist()
+            loading_azs = self.full_distribution.set_index('База_подробно').loc[base4].groupby(
+                by=['Название Объекта']).first()['Объём поставки'].tolist()
+            km_azs = self.full_distribution.set_index('База_подробно').loc[base4].groupby(
+                by=['Название Объекта']).first()['Км'].tolist()
             # Список с координатами НБ должен быть той же длины, что и список с координатами АЗС.
             latitude_base = info_base.loc[base4, ["Широта"]].values.tolist() * len(latitude_azs)
             longitude_base = info_base.loc[base4, ["Долгота"]].values.tolist() * len(longitude_azs)
             # Если есть дубликаты для какой-то из НБ, то эти дубликаты объединяем. Если нет, то ничего не делаем.
-            if len(duplicates[info_base.loc[base4, ['НБ']].item()]) > 1:
-                if self.base_name.index(base4) == duplicates[info_base.loc[base4, ['НБ']].item()][-1]:
+            if len(duplicates[info_base.loc[base4, ['База']].item()]) > 1:
+                if self.base_name.index(base4) == duplicates[info_base.loc[base4, ['База']].item()][-1]:
                     longitude_azs_global += longitude_azs
                     latitude_azs_global += latitude_azs
                     loading_azs_global += loading_azs

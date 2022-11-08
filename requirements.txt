@@ -6,6 +6,6 @@ shapely==1.8.4
 wheel==0.37.1
 gdal==3.5.1
 geopandas==0.9.0
-adjusttext==0.7.3
+adjusttext
 matplotlib==3.5.2
-pyqt5==5.15.7
+pyqt

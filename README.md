@@ -6,3 +6,7 @@
 - Python версии 3.x
 - Anaconda
 - Установка пакетов, перечисленных в requirements.txt
+- Microsoft Visual C++ 14.0 или выше
+
+## Как использовать
+Создать виртуальное окружение conda ```conda create --name myenv```. 

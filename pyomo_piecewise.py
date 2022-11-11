@@ -723,11 +723,11 @@ if __name__ == '__main__':
     try:
         start_time = time.time()
         # Выбор имени файла для считывания (в этом случае файл должен лежать в той же папке, что и исполняемый код).
-        filename = 'ТПС_Юг.xlsx'
+        filename = 'ТПС_Тест.xlsx'
         # Допустимая прибавка к значениям скачка для CAPEX и OPEX.
         add_to_capex = 10
         # Создание экземпляра класса, который должен решать задачу об оптимизации.
-        prob = OptimizationRoutes(os.curdir + '/' + filename, filename, add_to_capex)
+        prob = OptimizationRoutes(f'{os.curdir}/support_files/{filename}', filename, add_to_capex)
         # Чтение файлов.
         prob.read_data()
         # Создание рабочей модели для оптимизации.
@@ -744,6 +744,7 @@ if __name__ == '__main__':
         print('Время, за которое была решена задача: ', round((time.time() - start_time)))
     except Exception as error:
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        fName = os.path.split(exc_tb.tb_frame.ff_code.co_filename)[1]
+        fName = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         print('Какая-то ошибка, информация:')
-        print(exc_type, fName, exc_tb.tb_lineno)
+        print(f' тип ошибки {exc_type} \n имя файла скрипта {fName} \n строка {exc_tb.tb_lineno}')
+
